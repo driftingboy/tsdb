@@ -54,7 +54,7 @@ type Sample struct {
 	Id string
 	// Metric     string
 	// Labels     LabelSet
-	DataPoints DataPoint
+	DataPoint
 }
 
 // func (s Sample) ID() string {
