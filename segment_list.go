@@ -25,6 +25,14 @@ type SegmentDLinkedList struct {
 	tail   *SegmentNode
 }
 
+func newSegmentDLinkedList(segmentSize int64) *SegmentDLinkedList {
+	segment := newMemorySegment(segmentSize)
+	return &SegmentDLinkedList{
+		head: &SegmentNode{val: segment},
+		tail: &SegmentNode{val: segment},
+	}
+}
+
 type SegmentNode struct {
 	val  Segment
 	next *SegmentNode
@@ -32,7 +40,9 @@ type SegmentNode struct {
 }
 
 func (sl *SegmentDLinkedList) insert(s Segment) {
-	panic("not implemented") // TODO: Implement
+	sn := &SegmentNode{val: s, pre: sl.head}
+	sl.head.next = sn
+	sl.head = sn
 }
 
 func (sl *SegmentDLinkedList) delete(s Segment) error {

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 	//"github.com/dgryski/go-tsz"
 )
 
@@ -21,6 +22,8 @@ type memSegment struct {
 	minT int64
 	maxT int64
 
+	// Segment Max Store, is a only read data
+	capacity int64
 	// Write ahead log.
 	// wal wal
 	// The timestamp range of partitions after which they get persisted
@@ -30,19 +33,37 @@ type memSegment struct {
 }
 
 // TODO newMemoryPartition 提供初始化 series（指标）的 option
-func newMemorySegment() Segment {
+func newMemorySegment(capacity int64) Segment {
 	return &memSegment{
-		minT: math.MinInt64,
-		maxT: math.MaxInt64,
+		minT:     math.MinInt64,
+		maxT:     math.MaxInt64,
+		capacity: capacity,
 	}
 }
 
 func (ms *memSegment) insertRows(samples []*Sample) error {
+	var (
+		orderNum     int64
+		maxTimestamp int64
+	)
 	for _, s := range samples {
+		if s.Ts == 0 {
+			s.Ts = TimeNowUnix()
+		}
+		if s.Ts > ms.maxTimestamp() {
+			maxTimestamp = s.Ts
+		}
 		series := ms.getOrCreateSeriesByID(s.Id)
-		series.insertPoint(&s.DataPoints)
+		series.insertPoint(&s.DataPoint)
+		orderNum++
 	}
+	atomic.AddInt64(&ms.numPoints, orderNum)
+	atomic.StoreInt64(&ms.maxT, maxTimestamp)
 	return nil
+}
+
+func TimeNowUnix() int64 {
+	return time.Now().Unix()
 }
 
 func (ms *memSegment) clean() error {
@@ -55,19 +76,19 @@ func (ms *memSegment) selectDataPoints(metricId string, start int64, end int64) 
 }
 
 func (ms *memSegment) minTimestamp() int64 {
-	return ms.minT
+	return atomic.LoadInt64(&ms.minT)
 }
 
 func (ms *memSegment) maxTimestamp() int64 {
-	return ms.maxT
+	return atomic.LoadInt64(&ms.maxT)
 }
 
 func (ms *memSegment) size() int64 {
-	return ms.numPoints
+	return atomic.LoadInt64(&ms.numPoints)
 }
 
 func (ms *memSegment) active() bool {
-	return true
+	return ms.size() < ms.capacity
 }
 
 func (ms *memSegment) expired() bool {
@@ -100,6 +121,7 @@ type memorySeries struct {
 	// block *tsz.Series
 }
 
+// TODO return is disorder ，如果disorder 则不会numpoints++
 func (m *memorySeries) insertPoint(point *DataPoint) {
 	len := atomic.LoadInt64(&m.len)
 	// TODO: 互斥锁的优化

@@ -1,11 +1,28 @@
 package tsdb
 
+import (
+	"github/driftingboy/tsdb/logger"
+	"os"
+)
+
+type segmentConf struct {
+	capacity int64
+}
+
 type TSDB struct {
 	sl SegmentList
-
 	// v1 同步插入（更新为异步worker插入）
 	// workers
-	logger Logger
+	sc     *segmentConf
+	logger logger.Logger
+}
+
+func OpenTSDB(sc *segmentConf) *TSDB {
+	return &TSDB{
+		sl:     newSegmentDLinkedList(sc.capacity),
+		sc:     sc,
+		logger: logger.WithPrefix(logger.NewStdLogger(os.Stdout, 4096), logger.DefaultCaller, logger.DefaultTimer),
+	}
 }
 
 func (ts *TSDB) InsertRows(rows []*Sample) error {
@@ -24,11 +41,11 @@ func (ts *TSDB) GetAvailableHead() (segment Segment) {
 		return
 	}
 
-	segment = newMemorySegment()
+	segment = newMemorySegment(ts.sc.capacity)
 	ts.sl.insert(segment)
 	go func() {
 		if err := ts.flushToDisk(); err != nil {
-			ts.logger.Printf("failed to flush in-memory partitions: %v", err)
+			ts.logger.Log(logger.Error, "err", err)
 		}
 	}()
 	return
